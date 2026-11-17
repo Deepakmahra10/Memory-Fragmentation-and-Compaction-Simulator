@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory Fragmentation &amp; Compaction Simulator</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Familjen+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- ===== Title ===== -->
+    <header class="masthead">
+      <h1>Memory fragmentation &amp; compaction</h1>
+      <p>Allocate and free processes in contiguous memory. Watch holes form, see a request fail even though enough
+        memory is free, then compact to fix it.</p>
+    </header>
+
+    <!-- ===== Memory map (the main view) ===== -->
+    <section class="sheet map-sheet" aria-labelledby="mapTitle">
+      <div class="sheet-head">
+        <h2 id="mapTitle">Physical memory</h2>
+        <p id="mapCaption" class="caption"></p>
+      </div>
+
+      <div class="mem-wrap">
+        <div id="memStrip" class="mem-strip" aria-label="Memory map"></div>
+        <div id="ruler" class="ruler" aria-hidden="true"></div>
+      </div>
+
+      <ul class="legend">
+        <li><i class="sw sw-proc"></i>Process (click to free it)</li>
+        <li><i class="sw sw-hole"></i>Free hole</li>
+        <li><i class="sw sw-target"></i>Where the next request will land</li>
+      </ul>
+
+      <div id="banner" class="banner hidden" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- ===== Statistics ===== -->
+    <section class="stats" aria-label="Memory statistics">
+      <div class="stat">
+        <span class="stat-label">Total memory</span>
+        <span class="stat-value" id="statTotal">0 KB</span>
+        <span class="stat-sub">&nbsp;</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">In use</span>
+        <span class="stat-value" id="statUsed">0 KB</span>
+        <span class="stat-sub" id="statUsedPct">0% of total</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Free</span>
+        <span class="stat-value" id="statFree">0 KB</span>
+        <span class="stat-sub" id="statFreePct">0% of total</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Holes</span>
+        <span class="stat-value" id="statHoles">0</span>
+        <span class="stat-sub">separate free blocks</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Largest hole</span>
+        <span class="stat-value" id="statLargest">0 KB</span>
+        <span class="stat-sub">biggest request that fits</span>
+      </div>
+    </section>
+
+    <section class="sheet meter-sheet" id="meter" aria-labelledby="fragTitle">
+      <div class="meter-head">
+        <h2 id="fragTitle">External fragmentation</h2>
+        <span class="frag-value" id="fragValue">0%</span>
+      </div>
+      <div class="meter-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+        id="meterTrack">
+        <div class="meter-fill" id="meterFill"></div>
+      </div>
+      <p class="formula" id="fragFormula"></p>
+      <p class="note" id="fragNote"></p>
+    </section>
+
+    <!-- ===== Controls + tables ===== -->
+    <div class="workspace">
+
+      <aside class="controls" aria-label="Controls">
+        <section class="sheet">
+          <h2>Memory size</h2>
+          <label class="field">
+            <span>Total memory (KB)</span>
+            <input id="totalMem" type="number" min="64" max="4096" step="1" value="512" inputmode="numeric">
+          </label>
+          <button id="btnSetSize" class="btn" type="button">Set size and clear</button>
+        </section>
+
+        <section class="sheet">
+          <h2>Placement strategy</h2>
+          <div class="segmented" id="algoGroup" role="group" aria-label="Placement strategy">
+            <button type="button" class="seg active" data-algo="first" aria-pressed="true">First fit</button>
+            <button type="button" class="seg" data-algo="best" aria-pressed="false">Best fit</button>
+            <button type="button" class="seg" data-algo="worst" aria-pressed="false">Worst fit</button>
+          </div>
+          <p class="hint" id="algoHint"></p>
+        </section>
+
+        <section class="sheet">
+          <h2>Allocate a process</h2>
+          <label class="field">
+            <span>Name (optional)</span>
+            <input id="procName" type="text" maxlength="10" placeholder="P1, P2, ... if empty" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Size (KB)</span>
+            <input id="procSize" type="number" min="1" step="1" value="64" inputmode="numeric">
+          </label>
+          <div class="chips" id="sizeChips" aria-label="Quick sizes">
+            <button type="button" class="chip" data-size="16">16</button>
+            <button type="button" class="chip" data-size="32">32</button>
+            <button type="button" class="chip" data-size="64">64</button>
+            <button type="button" class="chip" data-size="128">128</button>
+            <button type="button" class="chip" data-size="256">256</button>
+          </div>
+          <button id="btnAlloc" class="btn primary" type="button">Allocate</button>
+        </section>
+
+        <section class="sheet">
+          <h2>Compaction</h2>
+          <label class="check">
+            <input type="checkbox" id="autoCompact">
+            <span>Compact automatically when a request fails</span>
+          </label>
+          <button id="btnCompact" class="btn accent" type="button">Compact memory</button>
+          <div class="btn-row">
+            <button id="btnDemo" class="btn" type="button">Load fragmented example</button>
+            <button id="btnReset" class="btn" type="button">Clear all</button>
+          </div>
+        </section>
+      </aside>
+
+      <div class="tables">
+        <section class="sheet two-tables">
+          <div>
+            <h2>Processes</h2>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th class="num">Start</th>
+                    <th class="num">End</th>
+                    <th class="num">Size</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="procBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h2>Free holes</h2>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th class="num">Start</th>
+                    <th class="num">End</th>
+                    <th class="num">Size</th>
+                  </tr>
+                </thead>
+                <tbody id="holeBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="sheet">
+          <div class="sheet-head">
+            <h2>Event log</h2>
+            <button id="btnClearLog" class="link-btn" type="button">Clear log</button>
+          </div>
+          <ol class="log" id="log" aria-live="polite"></ol>
+        </section>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
